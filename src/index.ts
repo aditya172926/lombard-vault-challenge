@@ -1,8 +1,9 @@
 import "dotenv/config";
-import { Contract, JsonRpcProvider, TransactionReceipt, Wallet } from "ethers";
+import { Contract, ethers, Interface, JsonRpcProvider, parseUnits, TransactionReceipt, Wallet } from "ethers";
 import BTCeAbi from "./abis/BTCe.json";
 import ERC20Abi from "./abis/ERC20.json";
-import { LOMBARD_BTCE_CONTRACT_ADDRESS, WBTC_TOKEN_ADDRESS } from "./constants";
+import LAccountantAbi from "./abis/Lombard_Accountant.json";
+import { LOMBARD_ACCOUNTANT_CONTRACT_ADDRESS, LOMBARD_BTCE_CONTRACT_ADDRESS, WBTC_TOKEN_ADDRESS } from "./constants";
 import { EVMContract } from "./interface";
 
 enum TransactionStatus {
@@ -25,8 +26,69 @@ function setup_wallet(): Wallet {
 function initialize_contracts(wallet: Wallet): EVMContract {
     return {
         btce: new Contract(LOMBARD_BTCE_CONTRACT_ADDRESS, BTCeAbi, wallet),
-        wbtc: new Contract(WBTC_TOKEN_ADDRESS, ERC20Abi, wallet)
+        wbtc: new Contract(WBTC_TOKEN_ADDRESS, ERC20Abi, wallet),
+        accountant: new Contract(LOMBARD_ACCOUNTANT_CONTRACT_ADDRESS, LAccountantAbi, wallet)
     }
+}
+
+function calculateApy(currentRate: bigint, pastRate: bigint): number {
+    const growth = Number(currentRate) / Number(pastRate);
+    const timeDelta = 365 / 14; // 14 day trailing APY
+    const apy = Math.pow(growth, timeDelta) - 1;
+    return apy * 100;
+}
+
+async function getVaultDetails(contracts: EVMContract, wallet: Wallet) {
+    const baseTokenAddressFn = contracts.accountant["base"];
+    if (!baseTokenAddressFn) throw new Error("Base token address function interface not found");
+    const baseTokenAddress = await baseTokenAddressFn();
+    
+    const baseTokenContract = new Contract(baseTokenAddress, ERC20Abi, wallet);
+    const decimalsFn = baseTokenContract["decimals"];
+    if (!decimalsFn) throw new Error("Token Decimals function interface not found");
+    const decimals = await decimalsFn();
+
+    const currentShareRateFn = contracts.accountant["getRate"];
+    if (!currentShareRateFn) throw new Error("Current share rate function interface not found");
+    const currentShareRate: bigint = await currentShareRateFn();
+
+    // get shareRate of 14 days back
+    const currentBlockNumber = await wallet.provider?.getBlockNumber();
+    if (!currentBlockNumber) throw new Error("Failed to fetch current block number");
+
+    const pastBlockNumber = currentBlockNumber - (15 * 24 * 60 * 60 / 12); // 12 seconds per block production
+    console.log("Current block number ", currentBlockNumber);
+    console.log("Past block number ", pastBlockNumber);
+
+    const accountantInterface = new Interface(LAccountantAbi);
+    const exchangeRateEventTopic = accountantInterface.getEvent("ExchangeRateUpdated")?.topicHash;
+    if (!exchangeRateEventTopic) throw new Error("Exchange Rate Event Topic hash not found")    ;
+
+    const logs = await wallet.provider?.getLogs({
+        fromBlock: pastBlockNumber,
+        toBlock: currentBlockNumber,
+        topics: [exchangeRateEventTopic],
+        address: LOMBARD_ACCOUNTANT_CONTRACT_ADDRESS
+    });
+
+    if (logs) {
+        const log = logs[0];
+        if (log?.topics && log?.data) {
+            const decodedLog = accountantInterface.parseLog({
+                topics: log.topics,
+                data: log.data
+            });
+            const prevShareRate = decodedLog?.args[0];
+            console.log("decoded log args ", decodedLog?.args);
+
+            const apy = calculateApy(currentShareRate, prevShareRate);
+            console.log("APY ", apy);
+        }
+    }
+
+    console.log("Current share rate ", currentShareRate);
+    console.log("base token address ", baseTokenAddress);
+    console.log("base token decimals ", decimals);
 }
 
 async function checkBalance(contract: Contract, userAddress: string): Promise<bigint> {
@@ -69,6 +131,8 @@ async function main() {
         const wallet: Wallet = setup_wallet();
         const userAddress: string = await wallet.getAddress();
         const contracts: EVMContract = initialize_contracts(wallet);
+
+        await getVaultDetails(contracts, wallet);
 
         // balance before deposit
         console.log("Starting User Balance BTCe ", await checkBalance(contracts.btce, userAddress));
