@@ -1,66 +1,99 @@
 import "dotenv/config";
-import {Contract, InterfaceAbi, JsonRpcProvider, Wallet} from "ethers";
-import { LOMBARD_BTCE_CONTRACT_ADDRESS, WBTC_TOKEN_ADDRESS } from "./constants";
+import { Contract, JsonRpcProvider, TransactionReceipt, Wallet } from "ethers";
 import BTCeAbi from "./abis/BTCe.json";
 import ERC20Abi from "./abis/ERC20.json";
+import { LOMBARD_BTCE_CONTRACT_ADDRESS, WBTC_TOKEN_ADDRESS } from "./constants";
+import { EVMContract } from "./interface";
+
+function setup_wallet(): Wallet {
+    const rpcUrl = process.env.RPC_URL;
+    if (!rpcUrl) throw new Error("Missing Rpc url in environment");
+
+    const privateKey = process.env.PRIVATE_KEY;
+    if (!privateKey) throw new Error("Missing private key in environment");
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    return wallet;
+}
+
+function initialize_contracts(wallet: Wallet): EVMContract {
+    return {
+        btce: new Contract(LOMBARD_BTCE_CONTRACT_ADDRESS, BTCeAbi, wallet),
+        wbtc: new Contract(WBTC_TOKEN_ADDRESS, ERC20Abi, wallet)
+    }
+}
+
+async function checkBalance(contract: Contract, userAddress: string): Promise<bigint> {
+    const balanceFn = contract["balanceOf"];
+    if (!balanceFn) throw new Error("Balance check function interface not found");
+    const userBalance: bigint = await balanceFn(userAddress);
+    return userBalance;
+}
+
+async function approveTokens(contract: Contract, spender: string, amount: number) {
+    const approveFn = contract["approve"];
+    if (!approveFn) throw new Error("Approve Tokens function interface not found");
+    const approveTransaction = await approveFn(spender, amount);
+    const approveTxnReceipt: TransactionReceipt = await approveTransaction.wait();
+    if (approveTxnReceipt.status === 1) {
+        console.log("Token Approval success");
+    } else {
+        console.log("Token Approval Failed");
+    }
+}
+
+async function depositTokens(contract: Contract, tokenAddress: string, amount: number, receiver: string, minShareAmt: number, nonce: number): Promise<boolean> {
+    const depositFn = contract["deposit(address,uint256,address,uint256)"];
+    if (!depositFn) throw new Error("Deposit function interface not found");
+    const depositTransaction = await depositFn(tokenAddress, amount, receiver, minShareAmt, { nonce });
+    const depositTxnReceipt: TransactionReceipt = await depositTransaction.wait();
+    return depositTxnReceipt.status == 1;
+}
+
+async function withdrawTokens(contract: Contract, amount: bigint, receiver: string, owner: string): Promise<boolean> {
+    const withdrawFn = contract["withdraw"];
+    if (!withdrawFn) throw new Error("Withdraw tokens interface not found");
+    const withdrawTransaciton = await withdrawFn(amount, receiver, owner);
+    const withdrawTxnReceipt: TransactionReceipt = await withdrawTransaciton.wait();
+    return withdrawTxnReceipt.status == 1;
+}
 
 async function main() {
-    const rpc_url = process.env.RPC_URL;
-    if (!rpc_url) throw new Error("Missing Rpc url in environment");
+    try {
+        const wallet: Wallet = setup_wallet();
+        const userAddress: string = await wallet.getAddress();
+        const contracts: EVMContract = initialize_contracts(wallet);
 
-    const private_key = process.env.PRIVATE_KEY;
-    if (!private_key) throw new Error("Missing private key in environment");
+        // balance before deposit
+        console.log("Starting User Balance BTCe ", await checkBalance(contracts.btce, userAddress));
 
-    const provider = new JsonRpcProvider(rpc_url);
-    const wallet = new Wallet(private_key, provider);
-    const user_address = await wallet.getAddress();
+        // token approval
+        await approveTokens(contracts.wbtc, LOMBARD_BTCE_CONTRACT_ADDRESS, 1000);
 
-    const btce_contract_instance = new Contract(LOMBARD_BTCE_CONTRACT_ADDRESS, BTCeAbi, wallet);
-    if (!btce_contract_instance) {
-        throw new Error ("Failed to initiate BTCE contract instance");
+        // get latest nonce
+        const nonce = await wallet.getNonce();
+        console.log("sending deposit with nonce ", nonce);
+
+        // deposit function call
+        const depositSuccess = await depositTokens(contracts.btce, WBTC_TOKEN_ADDRESS, 1000, userAddress, 0, nonce);
+        if (depositSuccess) {
+            console.log("User BTCe Balance after deposit ", await checkBalance(contracts.btce, userAddress));
+        } else {
+            throw new Error(`Deposit Transaction failed`);
+        }
+
+        // withdraw flow
+        const withdrawSuccess = await withdrawTokens(contracts.btce, BigInt(1000), userAddress, userAddress);
+        if (withdrawSuccess) {
+            console.log("User BTCe Balance after withdraw ", await checkBalance(contracts.btce, userAddress));
+        } else {
+            throw new Error(`Withdraw Transaction failed`);
+        }
+    } catch (error) {
+        console.error("Error: ", error instanceof Error ? error.message : error);
+        process.exit(1);
     }
-    const balanceOf = btce_contract_instance["balanceOf"];
-    if (!balanceOf) throw new Error("Balance Of method from contract failed");
-    const user_btce_balance = await balanceOf(user_address);
-    console.log("balance ", user_btce_balance);
-
-    // token approval
-    const wBTC_contract_instance = new Contract(WBTC_TOKEN_ADDRESS, ERC20Abi, wallet);
-    const approveFn = wBTC_contract_instance["approve"];
-    if (!approveFn) throw new Error("Approve transaction failed on wBTC");
-    const approveTransaction = await approveFn(LOMBARD_BTCE_CONTRACT_ADDRESS, 1000);
-    const approveTransactionReceipt = await approveTransaction.wait();
-    console.log("approve txn receipt ", approveTransactionReceipt);
-
-    // get latest nonce
-    const nonce = 1+ await provider.getTransactionCount(
-        await wallet.getAddress(),
-        "pending"
-    )
-
-    console.log("sending deposit with nonce ", nonce);
-
-    // deposit function call
-    const depositFunction = btce_contract_instance["deposit(address,uint256,address,uint256)"];
-    if (!depositFunction) throw new Error("Failed to initiate Deposit call instance");
-    const depositTransaction = await depositFunction(WBTC_TOKEN_ADDRESS, 1000, user_address, 0, {nonce});
-    const depositTransactionReceipt = await depositTransaction.wait();
-    console.log("Deposit transaction receipt ", depositTransactionReceipt);
-
-    // check balance after deposit
-    const user_btce_balance_after_deposit = await balanceOf(user_address);
-    console.log("balance after deposit ", user_btce_balance_after_deposit);
-
-    // withdraw flow
-    const withdrawFunction = btce_contract_instance["withdraw"];
-    if (!withdrawFunction) throw new Error("Failed to initiate Withdraw call instance");
-    const withdrawTransaction = await withdrawFunction(1000, user_address, user_address);
-    const withdrawTransactionReceipt = await withdrawTransaction.wait();
-    console.log("Withdraw transaction receipt", withdrawTransactionReceipt);
-
-    // check balance after deposit
-    const user_btce_balance_after_withdraw = await balanceOf(user_address);
-    console.log("balance after withdraw ", user_btce_balance_after_withdraw);
 }
 
 main();
