@@ -5,6 +5,11 @@ import ERC20Abi from "./abis/ERC20.json";
 import { LOMBARD_BTCE_CONTRACT_ADDRESS, WBTC_TOKEN_ADDRESS } from "./constants";
 import { EVMContract } from "./interface";
 
+enum TransactionStatus {
+    SUCCESS = 1,
+    FAIL
+}
+
 function setup_wallet(): Wallet {
     const rpcUrl = process.env.RPC_URL;
     if (!rpcUrl) throw new Error("Missing Rpc url in environment");
@@ -36,10 +41,10 @@ async function approveTokens(contract: Contract, spender: string, amount: number
     if (!approveFn) throw new Error("Approve Tokens function interface not found");
     const approveTransaction = await approveFn(spender, amount);
     const approveTxnReceipt: TransactionReceipt = await approveTransaction.wait();
-    if (approveTxnReceipt.status === 1) {
+    if (approveTxnReceipt.status === TransactionStatus.SUCCESS) {
         console.log("Token Approval success");
     } else {
-        console.log("Token Approval Failed");
+        throw new Error("Token Approval Failed");
     }
 }
 
@@ -48,7 +53,7 @@ async function depositTokens(contract: Contract, tokenAddress: string, amount: n
     if (!depositFn) throw new Error("Deposit function interface not found");
     const depositTransaction = await depositFn(tokenAddress, amount, receiver, minShareAmt, { nonce });
     const depositTxnReceipt: TransactionReceipt = await depositTransaction.wait();
-    return depositTxnReceipt.status == 1;
+    return depositTxnReceipt.status == TransactionStatus.SUCCESS;
 }
 
 async function withdrawTokens(contract: Contract, amount: bigint, receiver: string, owner: string): Promise<boolean> {
@@ -56,7 +61,7 @@ async function withdrawTokens(contract: Contract, amount: bigint, receiver: stri
     if (!withdrawFn) throw new Error("Withdraw tokens interface not found");
     const withdrawTransaciton = await withdrawFn(amount, receiver, owner);
     const withdrawTxnReceipt: TransactionReceipt = await withdrawTransaciton.wait();
-    return withdrawTxnReceipt.status == 1;
+    return withdrawTxnReceipt.status == TransactionStatus.SUCCESS;
 }
 
 async function main() {
