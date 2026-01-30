@@ -48,13 +48,19 @@ async function main() {
     console.log("Deposit transaction receipt ", depositTransactionReceipt);
 
     // check balance after deposit
-    const user_btce_balance_after = await balanceOf(user_address);
-    console.log("balance ", user_btce_balance_after);
+    const user_btce_balance_after_deposit = await balanceOf(user_address);
+    console.log("balance after deposit ", user_btce_balance_after_deposit);
 
     // withdraw flow
     const withdrawFunction = btce_contract_instance["withdraw"];
     if (!withdrawFunction) throw new Error("Failed to initiate Withdraw call instance");
-    const withdrawTransaction = await withdrawFunction();
+    const withdrawTransaction = await withdrawFunction(1000, user_address, user_address);
+    const withdrawTransactionReceipt = await withdrawTransaction.wait();
+    console.log("Withdraw transaction receipt", withdrawTransactionReceipt);
+
+    // check balance after deposit
+    const user_btce_balance_after_withdraw = await balanceOf(user_address);
+    console.log("balance after withdraw ", user_btce_balance_after_withdraw);
 }
 
 main();
