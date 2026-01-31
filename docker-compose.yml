@@ -1,0 +1,58 @@
+services:
+  anvil:
+    build:
+      context: .
+      dockerfile: Dockerfile.anvil
+    container_name: lombard-anvil
+    command:
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8545"
+      - --fork-url
+      - ${RPC_URL}
+      - --silent
+    ports:
+      - "8545:8545"
+    healthcheck:
+      test:
+        - CMD
+        - cast
+        - block-number
+        - --rpc-url
+        - http://127.0.0.1:8545
+      interval: 3s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    profiles:
+      - fork
+
+  # fork mode
+  app-fork:
+    build: .
+    container_name: lombard-app-fork
+    env_file:
+      - .env
+    environment:
+      - RPC_URL=http://anvil:8545
+      - PRIVATE_KEY=${PRIVATE_KEY}
+    depends_on:
+      anvil:
+        condition: service_healthy
+    command: ["${TOKEN_ADDRESS}", "${TOKEN_AMOUNT}"]
+    profiles:
+      - fork
+
+  # mainnet mode
+  app-mainnet:
+    build: .
+    container_name: lombard-app-mainnet
+    env_file:
+      - .env
+    environment:
+      - RPC_URL=${RPC_URL}
+      - PRIVATE_KEY=${PRIVATE_KEY}
+    command: ["${TOKEN_ADDRESS}", "${TOKEN_AMOUNT}"]
+    profiles:
+      - mainnet

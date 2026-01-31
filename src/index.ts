@@ -159,18 +159,25 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
     const exchangeRateEventTopic = accountantInterface.getEvent("ExchangeRateUpdated")?.topicHash;
     if (!exchangeRateEventTopic) throw new Error("Exchange Rate Event Topic hash not found");
 
-    const providerLogs = await wallet.provider?.getLogs({
-        fromBlock: pastBlockNumber,
-        toBlock: currentBlockNumber,
-        topics: [exchangeRateEventTopic],
-        address: contracts.accountant.address
-    });
-
     let log: Log | LogResult | undefined;
 
-    if (providerLogs && providerLogs.length > 0) {
-        log = providerLogs[0];
-    } else {
+    try {
+        const providerLogs = await wallet.provider?.getLogs({
+            fromBlock: pastBlockNumber,
+            toBlock: currentBlockNumber,
+            topics: [exchangeRateEventTopic],
+            address: contracts.accountant.address
+        });
+
+        if (providerLogs && providerLogs.length > 0) {
+            log = providerLogs[0];
+        } else {
+            const apiLogs = await fetchLogs(chainId, contracts.accountant.address, exchangeRateEventTopic, pastBlockNumber, currentBlockNumber);
+            if (apiLogs && apiLogs.length > 0) {
+                log = apiLogs[0];
+            }
+        }
+    } catch (error) {
         const apiLogs = await fetchLogs(chainId, contracts.accountant.address, exchangeRateEventTopic, pastBlockNumber, currentBlockNumber);
         if (apiLogs && apiLogs.length > 0) {
             log = apiLogs[0];
@@ -227,7 +234,7 @@ async function approveTokens(contract: Contract, spender: string, amount: number
     }
 }
 
-async function depositTokens(contract: Contract, tokenAddress: string, amount: number, receiver: string, minShareAmt: number, nonce: number): Promise<boolean> {
+async function depositTokens(contract: Contract, tokenAddress: string, amount: bigint, receiver: string, minShareAmt: bigint, nonce: number): Promise<boolean> {
     const depositTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contract, "deposit(address,uint256,address,uint256)", tokenAddress, amount, receiver, minShareAmt, { nonce });
     return depositTxnReceipt.status == TransactionStatus.SUCCESS;
 }
@@ -237,11 +244,15 @@ async function withdrawTokens(contract: Contract, amount: bigint, receiver: stri
     return withdrawTxnReceipt.status == TransactionStatus.SUCCESS;
 }
 
-async function main(tokenToDeposit: string) {
+async function main(tokenToDeposit: string, amount: number) {
     try {
         const wallet: Wallet = setup_wallet();
         const userAddress: string = await wallet.getAddress();
         const contracts: EVMContract = await initialize_contracts(wallet, tokenToDeposit);
+
+        const tokenUserBalance = Number(formatUnits(await checkBalance(contracts.depositToken.contract, userAddress), contracts.depositToken.decimals));
+        const formattedAmount = Number(formatUnits(amount, contracts.depositToken.decimals));
+        if (formattedAmount > tokenUserBalance) throw new Error("Not enough Balance");
 
         const data: VaultDetails = await getVaultDetails(contracts, wallet);
         console.log("User Wallet Address ", userAddress);
@@ -251,14 +262,14 @@ async function main(tokenToDeposit: string) {
         await checkMultipleBalances(contracts, userAddress);
 
         // token approval
-        await approveTokens(contracts.depositToken.contract, contracts.btce.address, 1000);
+        await approveTokens(contracts.depositToken.contract, contracts.btce.address, amount);
 
         // get latest nonce
         const nonce = await wallet.getNonce();
 
         // deposit function call
         console.log("\nDepositing...");
-        const depositSuccess = await depositTokens(contracts.btce.contract, contracts.depositToken.address, 1000, userAddress, 0, nonce);
+        const depositSuccess = await depositTokens(contracts.btce.contract, contracts.depositToken.address, BigInt(amount), userAddress, BigInt(0), nonce);
         if (depositSuccess) {
             await checkMultipleBalances(contracts, userAddress);
         } else {
@@ -267,7 +278,7 @@ async function main(tokenToDeposit: string) {
 
         // withdraw flow
         console.log("\nWithdrawing...");
-        const withdrawSuccess = await withdrawTokens(contracts.btce.contract, BigInt(1000), userAddress, userAddress);
+        const withdrawSuccess = await withdrawTokens(contracts.btce.contract, BigInt(amount), userAddress, userAddress);
         if (withdrawSuccess) {
             await checkMultipleBalances(contracts, userAddress);
         } else {
@@ -281,7 +292,7 @@ async function main(tokenToDeposit: string) {
 
 const tokenToDeposit = process.argv[2];
 if (!tokenToDeposit) {
-    console.error("Usage: npm run start -- <tokenAddress>");
+    console.error("Usage: npm run start -- <tokenAddress> <amount>");
     process.exit(1);
 }
 
@@ -289,4 +300,10 @@ if (!isAddress(tokenToDeposit)) {
     throw new Error("Invalid token address");
 }
 
-main(tokenToDeposit);
+const amount = Number(process.argv[3]);
+if (!amount) {
+    console.error("Usage: npm run start -- <tokenAddress> <amount>");
+    process.exit(1);
+}
+
+main(tokenToDeposit, amount);
