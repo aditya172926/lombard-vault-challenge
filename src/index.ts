@@ -148,12 +148,10 @@ async function calculateTVL(contract: Contract, currentShareRate: number): Promi
 
 async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<VaultDetails> {
     // get shareRate of 14 days back
-    const currentBlockNumber = await wallet.provider?.getBlockNumber();
-    if (!currentBlockNumber) throw new Error("Failed to fetch current block number");
-
     const network = await wallet.provider?.getNetwork();
     if (!network) throw new Error("Failed to get Network data");
     const chainId = Number(network.chainId);
+
     const fourteenDaysAgoTs = Math.floor(Date.now() / 1000) - 14 * 24 * 60 * 60;
     const etherscan_api = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=block&action=getblocknobytime&timestamp=${fourteenDaysAgoTs}&closest=before&apikey=${process.env.ETHERSCAN_API_KEY}`
 
@@ -167,11 +165,13 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
         throw new Error(`Etherscan API error: ${data.message}`);
     }
     const pastBlockNumber = Number(data.result);
+    const currentBlockNumber = await wallet.provider?.getBlockNumber();
+    if (!currentBlockNumber) throw new Error("Failed to fetch current block number");
 
     const accountantInterface = new Interface(LAccountantAbi);
     const exchangeRateEventTopic = accountantInterface.getEvent("ExchangeRateUpdated")?.topicHash;
     if (!exchangeRateEventTopic) throw new Error("Exchange Rate Event Topic hash not found");
-
+    
     const logs = await wallet.provider?.getLogs({
         fromBlock: pastBlockNumber,
         toBlock: currentBlockNumber,
@@ -192,23 +192,17 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
         data: log.data
     });
 
-    const baseTokenDecimals = Number(await callContractMethod<bigint>(contracts.baseToken.contract, "decimals"));
-    const prevShareRate = Number(decodedLog?.args[0]) / Math.pow(10, baseTokenDecimals);
-    const currentShareRate = Number(await callContractMethod<bigint>(contracts.accountant.contract, "getRate")) / Math.pow(10, baseTokenDecimals);
+    const prevShareRate = Number(formatUnits(decodedLog?.args[0], contracts.baseToken.decimals));
+    const currentShareRate = Number(formatUnits(await callContractMethod<bigint>(contracts.accountant.contract, "getRate"), contracts.baseToken.decimals));
 
     const apy = calculateApy(currentShareRate, prevShareRate);
-
-    const [tvl, tokenSymbol, vaultName] = await Promise.all([
-        calculateTVL(contracts.lombardVault.contract, Number(currentShareRate)),
-        callContractMethod<string>(contracts.lombardVault.contract, "symbol"),
-        callContractMethod<string>(contracts.lombardVault.contract, "name")
-    ]);
+    const tvl = await calculateTVL(contracts.lombardVault.contract, Number(currentShareRate));
 
     return {
         apy,
         tvl,
-        token: tokenSymbol,
-        vaultName
+        token: contracts.lombardVault.symbol,
+        vaultName: contracts.lombardVault.name
     }
 }
 
@@ -256,7 +250,8 @@ async function main(tokenToDeposit: string) {
 
         const depositTokenDecimals = await callContractMethod<bigint>(contracts.depositToken.contract, "decimals");
 
-        console.log("Vault Details \n", await getVaultDetails(contracts, wallet));
+        const data: VaultDetails = await getVaultDetails(contracts, wallet);
+        console.log(`Vault: ${data.vaultName}\nAPY: ${data.apy.toFixed(2)} %\nTVL: $ ${data.tvl.toFixed(2)}\nToken: ${data.token} (Decimals: ${contracts.lombardVault.decimals})\n`);
 
         // balance before deposit
         await checkMultipleBalances(contracts, userAddress);
