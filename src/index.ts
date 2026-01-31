@@ -1,13 +1,13 @@
 import "dotenv/config";
-import { Contract, ContractTransactionReceipt, ContractTransactionResponse, formatUnits, Interface, isAddress, JsonRpcProvider, Network, Wallet } from "ethers";
+import { Contract, ContractTransactionReceipt, ContractTransactionResponse, formatUnits, Interface, isAddress, JsonRpcProvider, Log, Wallet } from "ethers";
 import BTCeAbi from "./abis/BTCe.json";
 import ERC20Abi from "./abis/ERC20.json";
 import LBTCvAbi from "./abis/LBTCv.json";
 import LAccountantAbi from "./abis/Lombard_Accountant.json";
 import TellerAbi from "./abis/Teller.json";
 import { LOMBARD_BTCE_CONTRACT_ADDRESS } from "./constants";
-import { EVMContract, TokenBalanceData, VaultDetails } from "./interface";
-import { getBtcPrice } from "./service";
+import { EVMContract, LogResult, VaultDetails } from "./interface";
+import { fetchLogs, getBtcPrice, getPastBlockNumber } from "./service";
 
 enum TransactionStatus {
     SUCCESS = 1,
@@ -151,40 +151,35 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
     const network = await wallet.provider?.getNetwork();
     if (!network) throw new Error("Failed to get Network data");
     const chainId = Number(network.chainId);
-
-    const fourteenDaysAgoTs = Math.floor(Date.now() / 1000) - 14 * 24 * 60 * 60;
-    const etherscan_api = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=block&action=getblocknobytime&timestamp=${fourteenDaysAgoTs}&closest=before&apikey=${process.env.ETHERSCAN_API_KEY}`
-
-    const res = await fetch(etherscan_api);
-    if (!res.ok) {
-        throw new Error(`Etherscan HTTP error: ${res.status}`);
-    }
-
-    const data = await res.json();
-    if (data.status !== "1") {
-        throw new Error(`Etherscan API error: ${data.message}`);
-    }
-    const pastBlockNumber = Number(data.result);
+    const pastBlockNumber = await getPastBlockNumber(chainId);
     const currentBlockNumber = await wallet.provider?.getBlockNumber();
     if (!currentBlockNumber) throw new Error("Failed to fetch current block number");
 
     const accountantInterface = new Interface(LAccountantAbi);
     const exchangeRateEventTopic = accountantInterface.getEvent("ExchangeRateUpdated")?.topicHash;
     if (!exchangeRateEventTopic) throw new Error("Exchange Rate Event Topic hash not found");
-    
-    const logs = await wallet.provider?.getLogs({
+
+    const providerLogs = await wallet.provider?.getLogs({
         fromBlock: pastBlockNumber,
         toBlock: currentBlockNumber,
         topics: [exchangeRateEventTopic],
         address: contracts.accountant.address
     });
 
-    if (!logs || logs.length == 0) {
-        throw new Error("No logs found to calculate APY");
+    let log: Log | LogResult | undefined;
+
+    if (providerLogs && providerLogs.length > 0) {
+        log = providerLogs[0];
+    } else {
+        const apiLogs = await fetchLogs(chainId, contracts.accountant.address, exchangeRateEventTopic, pastBlockNumber, currentBlockNumber);
+        if (apiLogs && apiLogs.length > 0) {
+            log = apiLogs[0];
+        }
     }
-    const log = logs[0];
+
+    // Validate
     if (!log?.topics || !log?.data) {
-        throw new Error("No log data to calculate APY");
+        throw new Error("No valid exchange rate logs found");
     }
 
     const decodedLog = accountantInterface.parseLog({
@@ -215,14 +210,14 @@ async function checkMultipleBalances(contracts: EVMContract, userAddress: string
     const [depositTokenBalance, BTCeBalance] = await Promise.all([
         checkBalance(contracts.depositToken.contract, userAddress),
         checkBalance(contracts.btce.contract, userAddress),
-    ])
-    const tokenBalance: TokenBalanceData[] = [
-        { name: contracts.depositToken.symbol, balance: Number(formatUnits(depositTokenBalance, contracts.depositToken.decimals)) },
-        { name: contracts.btce.symbol, balance: Number(formatUnits(BTCeBalance, contracts.btce.decimals)) },
-    ]
+    ]);
 
-    console.log("Balances")
-    console.table(tokenBalance);
+    const formattedDepositTokenBalance = Number(formatUnits(depositTokenBalance, contracts.depositToken.decimals));
+    const formattedBTCeBalance = Number(formatUnits(BTCeBalance, contracts.btce.decimals));
+
+    console.log("Balances");
+    console.log(`Deposit Token ${contracts.depositToken.symbol} balance: ${formattedDepositTokenBalance}`);
+    console.log(`Receipt Token ${contracts.btce.symbol} balance: ${formattedBTCeBalance}`);
 }
 
 async function approveTokens(contract: Contract, spender: string, amount: number) {
@@ -261,7 +256,6 @@ async function main(tokenToDeposit: string) {
 
         // get latest nonce
         const nonce = await wallet.getNonce();
-        console.log("sending deposit with nonce ", nonce);
 
         // deposit function call
         console.log("\nDepositing...");
