@@ -13,3 +13,10 @@ export interface EVMData {
     address: string,
     contract: Contract
 }
+
+export interface VaultDetails {
+    vaultName: string,
+    token: string,
+    apy: number,
+    tvl: number
+}

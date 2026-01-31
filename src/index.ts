@@ -6,7 +6,8 @@ import LBTCvAbi from "./abis/LBTCv.json";
 import LAccountantAbi from "./abis/Lombard_Accountant.json";
 import TellerAbi from "./abis/Teller.json";
 import { LOMBARD_BTCE_CONTRACT_ADDRESS } from "./constants";
-import { EVMContract } from "./interface";
+import { EVMContract, VaultDetails } from "./interface";
+import { getBtcPrice } from "./service";
 
 enum TransactionStatus {
     SUCCESS = 1,
@@ -77,29 +78,30 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
     }
 }
 
-function calculateApy(currentRate: bigint, pastRate: bigint): number {
-    const growth = Number(currentRate) / Number(pastRate);
+function calculateApy(currentRate: number, pastRate: number): number {
+    const growth = currentRate / pastRate;
     const timeDelta = 365 / 14; // 14 day trailing APY
     const apy = Math.pow(growth, timeDelta) - 1;
     return apy * 100;
 }
 
-function calculateTVL() {
+async function calculateTVL(contract: Contract, currentShareRate: number): Promise<number> {
+    const decimals = Number(await callContractMethod<bigint>(contract, "decimals"));
+    const totalSupply = Number(await callContractMethod<bigint>(contract, "totalSupply")) / Math.pow(10, decimals);
+    const totalAssets = totalSupply * currentShareRate;
 
+    const btcPrice = await getBtcPrice();
+
+    const tvl = totalAssets * btcPrice;
+    return tvl;
 }
 
-async function getVaultDetails(contracts: EVMContract, wallet: Wallet) {
-    const decimals = await callContractMethod<bigint>(contracts.baseToken.contract, "decimals");
-
-    const currentShareRate: bigint = await callContractMethod<bigint>(contracts.accountant.contract, "getRate");
-
+async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<VaultDetails> {
     // get shareRate of 14 days back
     const currentBlockNumber = await wallet.provider?.getBlockNumber();
     if (!currentBlockNumber) throw new Error("Failed to fetch current block number");
 
     const pastBlockNumber = currentBlockNumber - (15 * 24 * 60 * 60 / 12); // 12 seconds per block production
-    console.log("Current block number ", currentBlockNumber);
-    console.log("Past block number ", pastBlockNumber);
 
     const accountantInterface = new Interface(LAccountantAbi);
     const exchangeRateEventTopic = accountantInterface.getEvent("ExchangeRateUpdated")?.topicHash;
@@ -112,24 +114,37 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet) {
         address: contracts.accountant.address
     });
 
-    if (logs) {
-        const log = logs[0];
-        if (log?.topics && log?.data) {
-            const decodedLog = accountantInterface.parseLog({
-                topics: log.topics,
-                data: log.data
-            });
-            const prevShareRate = decodedLog?.args[0];
-            console.log("decoded log args ", decodedLog?.args);
-
-            const apy = calculateApy(currentShareRate, prevShareRate);
-            console.log("APY ", apy);
-        }
+    if (!logs || logs.length == 0) {
+        throw new Error("No logs found to calculate APY");
+    }
+    const log = logs[0];
+    if (!log?.topics || !log?.data) {
+        throw new Error("No log data to calculate APY");
     }
 
-    console.log("Current share rate ", currentShareRate);
-    console.log("base token address ", contracts.baseToken.address);
-    console.log("base token decimals ", decimals);
+    const decodedLog = accountantInterface.parseLog({
+        topics: log.topics,
+        data: log.data
+    });
+
+    const baseTokenDecimals = Number(await callContractMethod<bigint>(contracts.baseToken.contract, "decimals"));
+    const prevShareRate = Number(decodedLog?.args[0]) / Math.pow(10, baseTokenDecimals);
+    const currentShareRate = Number(await callContractMethod<bigint>(contracts.accountant.contract, "getRate")) / Math.pow(10, baseTokenDecimals);
+    
+    const apy = calculateApy(currentShareRate, prevShareRate);
+
+    const [tvl, tokenSymbol, vaultName] = await Promise.all([
+        calculateTVL(contracts.lombardVault.contract, Number(currentShareRate)),
+        callContractMethod<string>(contracts.lombardVault.contract, "symbol"),
+        callContractMethod<string>(contracts.lombardVault.contract, "name")
+    ]);
+
+    return {
+        apy,
+        tvl,
+        token: tokenSymbol,
+        vaultName
+    }
 }
 
 async function checkBalance(contract: Contract, userAddress: string): Promise<bigint> {
@@ -139,9 +154,7 @@ async function checkBalance(contract: Contract, userAddress: string): Promise<bi
 
 async function approveTokens(contract: Contract, spender: string, amount: number) {
     const approveTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contract, "approve", spender, amount);
-    if (approveTxnReceipt.status === TransactionStatus.SUCCESS) {
-        console.log("Token Approval success");
-    } else {
+    if (approveTxnReceipt.status !== TransactionStatus.SUCCESS) {
         throw new Error("Token Approval Failed");
     }
 }
@@ -162,7 +175,9 @@ async function main(tokenToDeposit: string) {
         const userAddress: string = await wallet.getAddress();
         const contracts: EVMContract = await initialize_contracts(wallet, tokenToDeposit);
 
-        await getVaultDetails(contracts, wallet);
+        const depositTokenDecimals = await callContractMethod<bigint>(contracts.depositToken.contract, "decimals");
+
+        console.log("Vault Details \n", await getVaultDetails(contracts, wallet));
 
         // balance before deposit
         console.log("Starting User Balance BTCe ", await checkBalance(contracts.btce.contract, userAddress));
