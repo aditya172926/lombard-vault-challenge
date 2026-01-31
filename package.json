@@ -5,7 +5,9 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "build": "tsc",
-    "start": "ts-node src/index.ts"
+    "start": "ts-node src/index.ts",
+    "fork": "docker compose --profile fork up --build --abort-on-container-exit --exit-code-from app-fork",
+    "mainnet": "docker compose --profile mainnet up --build"
   },
   "keywords": [],
   "author": "",
