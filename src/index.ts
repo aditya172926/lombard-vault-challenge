@@ -243,9 +243,8 @@ async function main(tokenToDeposit: string) {
         const userAddress: string = await wallet.getAddress();
         const contracts: EVMContract = await initialize_contracts(wallet, tokenToDeposit);
 
-        const depositTokenDecimals = await callContractMethod<bigint>(contracts.depositToken.contract, "decimals");
-
         const data: VaultDetails = await getVaultDetails(contracts, wallet);
+        console.log("User Wallet Address ", userAddress);
         console.log(`Vault: ${data.vaultName}\nAPY: ${data.apy.toFixed(2)} %\nTVL: $ ${data.tvl.toFixed(2)}\nToken: ${data.token} (Decimals: ${contracts.lombardVault.decimals})\n`);
 
         // balance before deposit
