@@ -1,23 +1,25 @@
 services:
   anvil:
-    image: ghcr.io/foundry-rs/foundry:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.anvil
     container_name: lombard-anvil
-    command: >
-      anvil
-      --rpc-url ${MAINNET_RPC_URL}
-      --port 8545
+    command:
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8545"
+      - --fork-url
+      - ${RPC_URL}
+      - --silent
     ports:
       - "8545:8545"
     healthcheck:
       test:
         - CMD
-        - curl
-        - -s
-        - -X POST
-        - -H
-        - "Content-Type: application/json"
-        - --data
-        - '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}'
+        - cast
+        - block-number
+        - --rpc-url
         - http://127.0.0.1:8545
       interval: 3s
       timeout: 3s
@@ -33,8 +35,8 @@ services:
     env_file:
       - .env
     environment:
-      - RPC_URL=http://localhost:8545
-      - PRIVATE_KEY=${MAINNET_PRIVATE_KEY}
+      - RPC_URL=http://anvil:8545
+      - PRIVATE_KEY=${PRIVATE_KEY}
     depends_on:
       anvil:
         condition: service_healthy
@@ -49,8 +51,8 @@ services:
     env_file:
       - .env
     environment:
-      - RPC_URL=${MAINNET_RPC_URL}
-      - PRIVATE_KEY=${MAINNET_PRIVATE_KEY}
+      - RPC_URL=${RPC_URL}
+      - PRIVATE_KEY=${PRIVATE_KEY}
     command: ["${TOKEN_ADDRESS}"]
     profiles:
       - mainnet

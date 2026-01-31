@@ -1,0 +1,19 @@
+FROM ubuntu:22.04
+
+RUN apt-get update && apt-get install -y \
+  curl git ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install foundryup
+RUN curl -L https://foundry.paradigm.xyz | bash
+
+ENV PATH="/root/.foundry/bin:${PATH}"
+
+# Install latest STABLE Foundry
+RUN foundryup
+
+# Sanity check
+RUN forge --version && anvil --version && cast --version
+
+EXPOSE 8545
+ENTRYPOINT ["anvil"]

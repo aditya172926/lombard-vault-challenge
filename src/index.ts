@@ -159,18 +159,25 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
     const exchangeRateEventTopic = accountantInterface.getEvent("ExchangeRateUpdated")?.topicHash;
     if (!exchangeRateEventTopic) throw new Error("Exchange Rate Event Topic hash not found");
 
-    const providerLogs = await wallet.provider?.getLogs({
-        fromBlock: pastBlockNumber,
-        toBlock: currentBlockNumber,
-        topics: [exchangeRateEventTopic],
-        address: contracts.accountant.address
-    });
-
     let log: Log | LogResult | undefined;
 
-    if (providerLogs && providerLogs.length > 0) {
-        log = providerLogs[0];
-    } else {
+    try {
+        const providerLogs = await wallet.provider?.getLogs({
+            fromBlock: pastBlockNumber,
+            toBlock: currentBlockNumber,
+            topics: [exchangeRateEventTopic],
+            address: contracts.accountant.address
+        });
+
+        if (providerLogs && providerLogs.length > 0) {
+            log = providerLogs[0];
+        } else {
+            const apiLogs = await fetchLogs(chainId, contracts.accountant.address, exchangeRateEventTopic, pastBlockNumber, currentBlockNumber);
+            if (apiLogs && apiLogs.length > 0) {
+                log = apiLogs[0];
+            }
+        }
+    } catch (error) {
         const apiLogs = await fetchLogs(chainId, contracts.accountant.address, exchangeRateEventTopic, pastBlockNumber, currentBlockNumber);
         if (apiLogs && apiLogs.length > 0) {
             log = apiLogs[0];
