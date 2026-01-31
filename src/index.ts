@@ -1,12 +1,12 @@
 import "dotenv/config";
-import { Contract, ContractTransactionReceipt, ContractTransactionResponse, Interface, isAddress, JsonRpcProvider, Wallet } from "ethers";
+import { Contract, ContractTransactionReceipt, ContractTransactionResponse, formatUnits, Interface, isAddress, JsonRpcProvider, Wallet } from "ethers";
 import BTCeAbi from "./abis/BTCe.json";
 import ERC20Abi from "./abis/ERC20.json";
 import LBTCvAbi from "./abis/LBTCv.json";
 import LAccountantAbi from "./abis/Lombard_Accountant.json";
 import TellerAbi from "./abis/Teller.json";
 import { LOMBARD_BTCE_CONTRACT_ADDRESS } from "./constants";
-import { EVMContract, VaultDetails } from "./interface";
+import { EVMContract, TokenBalanceData, VaultDetails } from "./interface";
 import { getBtcPrice } from "./service";
 
 enum TransactionStatus {
@@ -57,10 +57,12 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
     const tellerAddress = await callContractMethod<string>(btceContract, "teller");
     const tellerContract = new Contract(tellerAddress, TellerAbi, wallet);
 
-    const lbtcvAddress: string = await callContractMethod<string>(tellerContract, "vault");
-    const lbtcvContract = new Contract(lbtcvAddress, LBTCvAbi, wallet);
+    const [lbtcvAddress, accountantAddress] = await Promise.all([
+        callContractMethod<string>(tellerContract, "vault"),
+        callContractMethod<string>(tellerContract, "accountant")
+    ]);
 
-    const accountantAddress = await callContractMethod<string>(tellerContract, "accountant");
+    const lbtcvContract = new Contract(lbtcvAddress, LBTCvAbi, wallet);
     const accountantContract = new Contract(accountantAddress, LAccountantAbi, wallet);
 
     const baseTokenAddress = await callContractMethod<string>(accountantContract, "base");
@@ -68,12 +70,60 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
 
     const depositTokenContract = new Contract(tokenToDeposit, ERC20Abi, wallet);
 
+    const btceData = await Promise.all([
+        callContractMethod<bigint>(btceContract, "decimals"),
+        callContractMethod<string>(btceContract, "symbol"),
+        callContractMethod<string>(btceContract, "name")
+    ]);
+
+    const lombardVaultData = await Promise.all([
+        callContractMethod<bigint>(lbtcvContract, "decimals"),
+        callContractMethod<string>(lbtcvContract, "symbol"),
+        callContractMethod<string>(lbtcvContract, "name")
+    ]);
+
+    const baseTokenData = await Promise.all([
+        callContractMethod<bigint>(baseTokenContract, "decimals"),
+        callContractMethod<string>(baseTokenContract, "symbol"),
+        callContractMethod<string>(baseTokenContract, "name")
+    ]);
+
+    const depositTokenData = await Promise.all([
+        callContractMethod<bigint>(depositTokenContract, "decimals"),
+        callContractMethod<string>(depositTokenContract, "symbol"),
+        callContractMethod<string>(depositTokenContract, "name")
+    ]);
+
     return {
-        btce: { address: LOMBARD_BTCE_CONTRACT_ADDRESS, contract: btceContract },
-        lombardVault: { address: lbtcvAddress, contract: lbtcvContract },
+        btce: { 
+            address: LOMBARD_BTCE_CONTRACT_ADDRESS, 
+            contract: btceContract, 
+            decimals: Number(btceData[0]),
+            symbol: btceData[1],
+            name: btceData[2]
+        },
+        lombardVault: {
+            address: lbtcvAddress, 
+            contract: lbtcvContract,
+            decimals: Number(lombardVaultData[0]),
+            symbol: lombardVaultData[1],
+            name: lombardVaultData[2]
+        },
         teller: { address: tellerAddress, contract: tellerContract },
-        baseToken: { address: baseTokenAddress, contract: baseTokenContract },
-        depositToken: { address: tokenToDeposit, contract: depositTokenContract },
+        baseToken: {
+            address: baseTokenAddress,
+            contract: baseTokenContract,
+            decimals: Number(baseTokenData[0]),
+            symbol: baseTokenData[1],
+            name: baseTokenData[2]
+        },
+        depositToken: { 
+            address: tokenToDeposit, 
+            contract: depositTokenContract,
+            decimals: Number(depositTokenData[0]),
+            symbol: depositTokenData[1],
+            name: depositTokenData[2]
+        },
         accountant: { address: accountantAddress, contract: accountantContract }
     }
 }
@@ -152,6 +202,20 @@ async function checkBalance(contract: Contract, userAddress: string): Promise<bi
     return userBalance;
 }
 
+async function checkMultipleBalances(contracts: EVMContract, userAddress: string) {
+    const [depositTokenBalance, BTCeBalance] = await Promise.all([
+        checkBalance(contracts.depositToken.contract, userAddress),
+        checkBalance(contracts.btce.contract, userAddress),
+    ])
+    const tokenBalance: TokenBalanceData[] = [
+        {name: contracts.depositToken.symbol, balance: Number(formatUnits(depositTokenBalance, contracts.depositToken.decimals))},
+        {name: contracts.btce.symbol, balance: Number(formatUnits(BTCeBalance, contracts.btce.decimals))},
+    ]
+
+    console.log("Balances")
+    console.table(tokenBalance);
+}
+
 async function approveTokens(contract: Contract, spender: string, amount: number) {
     const approveTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contract, "approve", spender, amount);
     if (approveTxnReceipt.status !== TransactionStatus.SUCCESS) {
@@ -180,7 +244,7 @@ async function main(tokenToDeposit: string) {
         console.log("Vault Details \n", await getVaultDetails(contracts, wallet));
 
         // balance before deposit
-        console.log("Starting User Balance BTCe ", await checkBalance(contracts.btce.contract, userAddress));
+        await checkMultipleBalances(contracts, userAddress);
 
         // token approval
         await approveTokens(contracts.depositToken.contract, contracts.btce.address, 1000);
@@ -190,17 +254,19 @@ async function main(tokenToDeposit: string) {
         console.log("sending deposit with nonce ", nonce);
 
         // deposit function call
+        console.log("\nDepositing...");
         const depositSuccess = await depositTokens(contracts.btce.contract, contracts.depositToken.address, 1000, userAddress, 0, nonce);
         if (depositSuccess) {
-            console.log("User BTCe Balance after deposit ", await checkBalance(contracts.btce.contract, userAddress));
+            await checkMultipleBalances(contracts, userAddress);
         } else {
             throw new Error(`Deposit Transaction failed`);
         }
 
         // withdraw flow
+        console.log("\nWithdrawing...");
         const withdrawSuccess = await withdrawTokens(contracts.btce.contract, BigInt(1000), userAddress, userAddress);
         if (withdrawSuccess) {
-            console.log("User BTCe Balance after withdraw ", await checkBalance(contracts.btce.contract, userAddress));
+            await checkMultipleBalances(contracts, userAddress);
         } else {
             throw new Error(`Withdraw Transaction failed`);
         }

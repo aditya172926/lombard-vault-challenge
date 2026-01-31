@@ -1,11 +1,11 @@
 import { Contract } from "ethers"
 
 export interface EVMContract {
-    btce: EVMData,
-    lombardVault: EVMData,
+    btce: TokenData,
+    lombardVault: TokenData,
     teller: EVMData,
-    baseToken: EVMData,
-    depositToken: EVMData,
+    baseToken: TokenData,
+    depositToken: TokenData,
     accountant: EVMData
 }
 
@@ -14,9 +14,22 @@ export interface EVMData {
     contract: Contract
 }
 
+export interface TokenData {
+    address: string,
+    contract: Contract,
+    decimals: number,
+    name: string,
+    symbol: string
+}
+
 export interface VaultDetails {
     vaultName: string,
     token: string,
     apy: number,
     tvl: number
+}
+
+export interface TokenBalanceData {
+    name: string,
+    balance: number
 }
