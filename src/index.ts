@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { Contract, ContractTransactionReceipt, ContractTransactionResponse, formatUnits, Interface, isAddress, JsonRpcProvider, Wallet } from "ethers";
+import { Contract, ContractTransactionReceipt, ContractTransactionResponse, formatUnits, Interface, isAddress, JsonRpcProvider, Network, Wallet } from "ethers";
 import BTCeAbi from "./abis/BTCe.json";
 import ERC20Abi from "./abis/ERC20.json";
 import LBTCvAbi from "./abis/LBTCv.json";
@@ -95,15 +95,15 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
     ]);
 
     return {
-        btce: { 
-            address: LOMBARD_BTCE_CONTRACT_ADDRESS, 
-            contract: btceContract, 
+        btce: {
+            address: LOMBARD_BTCE_CONTRACT_ADDRESS,
+            contract: btceContract,
             decimals: Number(btceData[0]),
             symbol: btceData[1],
             name: btceData[2]
         },
         lombardVault: {
-            address: lbtcvAddress, 
+            address: lbtcvAddress,
             contract: lbtcvContract,
             decimals: Number(lombardVaultData[0]),
             symbol: lombardVaultData[1],
@@ -117,8 +117,8 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
             symbol: baseTokenData[1],
             name: baseTokenData[2]
         },
-        depositToken: { 
-            address: tokenToDeposit, 
+        depositToken: {
+            address: tokenToDeposit,
             contract: depositTokenContract,
             decimals: Number(depositTokenData[0]),
             symbol: depositTokenData[1],
@@ -151,7 +151,22 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
     const currentBlockNumber = await wallet.provider?.getBlockNumber();
     if (!currentBlockNumber) throw new Error("Failed to fetch current block number");
 
-    const pastBlockNumber = currentBlockNumber - (15 * 24 * 60 * 60 / 12); // 12 seconds per block production
+    const network = await wallet.provider?.getNetwork();
+    if (!network) throw new Error("Failed to get Network data");
+    const chainId = Number(network.chainId);
+    const fourteenDaysAgoTs = Math.floor(Date.now() / 1000) - 14 * 24 * 60 * 60;
+    const etherscan_api = `https://api.etherscan.io/v2/api?chainid=${chainId}&module=block&action=getblocknobytime&timestamp=${fourteenDaysAgoTs}&closest=before&apikey=${process.env.ETHERSCAN_API_KEY}`
+
+    const res = await fetch(etherscan_api);
+    if (!res.ok) {
+        throw new Error(`Etherscan HTTP error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    if (data.status !== "1") {
+        throw new Error(`Etherscan API error: ${data.message}`);
+    }
+    const pastBlockNumber = Number(data.result);
 
     const accountantInterface = new Interface(LAccountantAbi);
     const exchangeRateEventTopic = accountantInterface.getEvent("ExchangeRateUpdated")?.topicHash;
@@ -180,7 +195,7 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
     const baseTokenDecimals = Number(await callContractMethod<bigint>(contracts.baseToken.contract, "decimals"));
     const prevShareRate = Number(decodedLog?.args[0]) / Math.pow(10, baseTokenDecimals);
     const currentShareRate = Number(await callContractMethod<bigint>(contracts.accountant.contract, "getRate")) / Math.pow(10, baseTokenDecimals);
-    
+
     const apy = calculateApy(currentShareRate, prevShareRate);
 
     const [tvl, tokenSymbol, vaultName] = await Promise.all([
@@ -208,8 +223,8 @@ async function checkMultipleBalances(contracts: EVMContract, userAddress: string
         checkBalance(contracts.btce.contract, userAddress),
     ])
     const tokenBalance: TokenBalanceData[] = [
-        {name: contracts.depositToken.symbol, balance: Number(formatUnits(depositTokenBalance, contracts.depositToken.decimals))},
-        {name: contracts.btce.symbol, balance: Number(formatUnits(BTCeBalance, contracts.btce.decimals))},
+        { name: contracts.depositToken.symbol, balance: Number(formatUnits(depositTokenBalance, contracts.depositToken.decimals)) },
+        { name: contracts.btce.symbol, balance: Number(formatUnits(BTCeBalance, contracts.btce.decimals)) },
     ]
 
     console.log("Balances")
