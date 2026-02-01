@@ -357,10 +357,9 @@ if (!isAddress(tokenToDeposit)) {
     throw new Error("Invalid token address");
 }
 
-const amount = Number(process.argv[3]);
+let amount = Number(process.argv[3]);
 if (!amount) {
-    console.error("Usage: npm run start -- <tokenAddress> <amount>");
-    process.exit(1);
+    amount = 1000; // default if not passed
 }
 
 main(tokenToDeposit, amount);
