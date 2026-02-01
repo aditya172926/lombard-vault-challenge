@@ -38,9 +38,9 @@ export async function getPastBlockNumber(
         return pastBlockNumber;
     } catch (error) {
         if (error instanceof Error) {
-            throw new Error(`Failed to fetch BTC price: ${error.message}`);
+            throw new Error(`Failed to fetch past block number: ${error.message}`);
         }
-        throw new Error('Failed to fetch BTC price: Unknown error');
+        throw new Error('Failed to fetch past block number: Unknown error');
     }
 }
 
@@ -65,8 +65,8 @@ export async function fetchLogs(
         return data.result;
     } catch (error) {
         if (error instanceof Error) {
-            throw new Error(`Failed to fetch BTC price: ${error.message}`);
+            throw new Error(`Failed to fetch logs: ${error.message}`);
         }
-        throw new Error('Failed to fetch BTC price: Unknown error');
+        throw new Error('Failed to fetch logs: Unknown error');
     }
 }
