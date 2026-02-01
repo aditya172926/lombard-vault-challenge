@@ -37,6 +37,7 @@ cp .sample.env .env
 - `TOKEN_ADDRESS`: (required if using Docker to run) Token address used to make the deposit. Lombard Defi Vault supports some tokens like WBTC, LBTC for making deposits and withdrawals on Ethereum mainnet.
 - `TOKEN_AMOUNT`:(required if using Docker to run) Amount of tokens you want to deposit and withdraw. This value should account for token decimals. So if depositing WBTC (decimals 8), 100000000 means 1 WBTC token.
 - `LOMBARD_BTCE_CONTRACT_ADDRESS`: Address of BTCe contract for the RPC_URL network. This is the entry point for making deposits and withdrawals in Lombard's Defi Vault and user receives BTCe tokens after deposits. If running on Ethereum Mainnet its address is 0x3a4baaBf4DC9910596821615e848f0e6545762F3.
+- `LBTC_TOKEN_ADDRESS`: Address of LBTC Token contract. Upon completion of Withdrawal time this token will be received by the user. 0x8236a87084f8B84306f72007F36F2618A5634494
 
 ## Running
 
@@ -102,22 +103,26 @@ The output of the script looks like this
 User Wallet Address  0x4eff290c1a734411b39aaA96eAbE1E25f0E223ae
 Vault: Lombard BTC Vault
 APY: 1.55 %
-TVL: $ 69355156.99
+TVL: $ 68972886.56
 Token: LBTCv (Decimals: 8)
 
 Balances
 Deposit Token WBTC balance: 0.00002298
 Receipt Token BTCe balance: 0.00014601
+LBTCv (Vault) Token LBTCv balance: 0.0001278
 
 Depositing...
 Balances
 Deposit Token WBTC balance: 0.00001298
 Receipt Token BTCe balance: 0.00015578
+LBTCv (Vault) Token LBTCv balance: 0.0001278
 
 Withdrawing...
 Balances
 Deposit Token WBTC balance: 0.00001298
 Receipt Token BTCe balance: 0.00014578
+LBTCv (Vault) Token LBTCv balance: 0.0001378
+Complete ✅
 ```
 
 The output logs shows the balance of both the token that was deposited and receipt token received and burned after a successful deposit and withdrawal transaction in the Lombard Defi Vault.

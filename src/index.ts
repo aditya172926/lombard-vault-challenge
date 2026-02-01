@@ -5,6 +5,7 @@ import ERC20Abi from "./abis/ERC20.json";
 import LBTCvAbi from "./abis/LBTCv.json";
 import LAccountantAbi from "./abis/Lombard_Accountant.json";
 import TellerAbi from "./abis/Teller.json";
+import WithdrawalQAbi from "./abis/WithDrawalQ.json";
 import { EVMContract, LogResult, VaultDetails } from "./interface";
 import { fetchLogs, getBtcPrice, getPastBlockNumber } from "./service";
 
@@ -72,6 +73,10 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
 
     const depositTokenContract = new Contract(tokenToDeposit, ERC20Abi, wallet);
 
+    const withdrawalQAddress = process.env.LOMBARD_WITHDRAWAL_QUEUE_ADDRESS;
+    if (!withdrawalQAddress) throw new Error("LOMBARD_WITHDRAWAL_QUEUE_ADDRESS not found in environment");
+    const withdrawalQueueContract = new Contract(withdrawalQAddress, WithdrawalQAbi, wallet);
+
     const btceData = await Promise.all([
         callContractMethod<bigint>(btceContract, "decimals"),
         callContractMethod<string>(btceContract, "symbol"),
@@ -126,7 +131,8 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
             symbol: depositTokenData[1],
             name: depositTokenData[2]
         },
-        accountant: { address: accountantAddress, contract: accountantContract }
+        accountant: { address: accountantAddress, contract: accountantContract },
+        withdrawalQueue: {address: withdrawalQAddress, contract: withdrawalQueueContract}
     }
 }
 
@@ -216,17 +222,20 @@ async function checkBalance(contract: Contract, userAddress: string): Promise<bi
 }
 
 async function checkMultipleBalances(contracts: EVMContract, userAddress: string) {
-    const [depositTokenBalance, BTCeBalance] = await Promise.all([
+    const [depositTokenBalance, BTCeBalance, LBTCvBalance] = await Promise.all([
         checkBalance(contracts.depositToken.contract, userAddress),
         checkBalance(contracts.btce.contract, userAddress),
+        checkBalance(contracts.lombardVault.contract, userAddress)
     ]);
 
     const formattedDepositTokenBalance = Number(formatUnits(depositTokenBalance, contracts.depositToken.decimals));
     const formattedBTCeBalance = Number(formatUnits(BTCeBalance, contracts.btce.decimals));
+    const formattedLBTCvBalance = Number(formatUnits(LBTCvBalance, contracts.lombardVault.decimals));
 
     console.log("Balances");
     console.log(`Deposit Token ${contracts.depositToken.symbol} balance: ${formattedDepositTokenBalance}`);
     console.log(`Receipt Token ${contracts.btce.symbol} balance: ${formattedBTCeBalance}`);
+    console.log(`LBTCv (Vault) Token ${contracts.lombardVault.symbol} balance: ${formattedLBTCvBalance}`)
 }
 
 async function approveTokens(contract: Contract, spender: string, amount: number) {
@@ -241,9 +250,33 @@ async function depositTokens(contract: Contract, tokenAddress: string, amount: b
     return depositTxnReceipt.status == TransactionStatus.SUCCESS;
 }
 
-async function withdrawTokens(contract: Contract, amount: bigint, receiver: string, owner: string): Promise<boolean> {
-    const withdrawTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contract, "withdraw", amount, receiver, owner)
-    return withdrawTxnReceipt.status == TransactionStatus.SUCCESS;
+async function withdrawTokens(contracts: EVMContract, amount: bigint, receiver: string, owner: string): Promise<boolean> {
+    const withdrawTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contracts.btce.contract, "withdraw", amount, receiver, owner);
+    if (withdrawTxnReceipt.status == TransactionStatus.SUCCESS) {
+        // submit to queue
+        const lbtcTokenAddress = process.env.LBTC_TOKEN_ADDRESS;
+        if (!lbtcTokenAddress) throw new Error("LBTC_TOKEN_ADDRESS not found in the environment");
+
+        const deadline = Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60;
+        const withdrawalQTxnReceipt = await sendContractMethod(
+            contracts.withdrawalQueue.contract, 
+            "safeUpdateAtomicRequest", 
+            contracts.lombardVault.address, // offer token
+            lbtcTokenAddress, // want address
+            [
+                deadline,
+                0, // atomic price
+                amount, // offer amount
+                false // inSolve
+            ],
+            contracts.accountant.address,
+            100 // discount
+        )
+
+        return withdrawalQTxnReceipt.status == TransactionStatus.SUCCESS;
+    } else {
+        throw new Error("Withdrawal Transaction failed");
+    }
 }
 
 async function main(tokenToDeposit: string, amount: number) {
@@ -280,12 +313,14 @@ async function main(tokenToDeposit: string, amount: number) {
 
         // withdraw flow
         console.log("\nWithdrawing...");
-        const withdrawSuccess = await withdrawTokens(contracts.btce.contract, BigInt(amount), userAddress, userAddress);
+        const withdrawSuccess = await withdrawTokens(contracts, BigInt(amount), userAddress, userAddress);
         if (withdrawSuccess) {
             await checkMultipleBalances(contracts, userAddress);
         } else {
             throw new Error(`Withdraw Transaction failed`);
         }
+
+        console.log("Complete ✅");
     } catch (error) {
         console.error("Error: ", error instanceof Error ? error.message : error);
         process.exit(1);
