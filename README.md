@@ -102,22 +102,26 @@ The output of the script looks like this
 User Wallet Address  0x4eff290c1a734411b39aaA96eAbE1E25f0E223ae
 Vault: Lombard BTC Vault
 APY: 1.55 %
-TVL: $ 69355156.99
+TVL: $ 68972886.56
 Token: LBTCv (Decimals: 8)
 
 Balances
 Deposit Token WBTC balance: 0.00002298
 Receipt Token BTCe balance: 0.00014601
+LBTCv (Vault) Token LBTCv balance: 0.0001278
 
 Depositing...
 Balances
 Deposit Token WBTC balance: 0.00001298
 Receipt Token BTCe balance: 0.00015578
+LBTCv (Vault) Token LBTCv balance: 0.0001278
 
 Withdrawing...
 Balances
 Deposit Token WBTC balance: 0.00001298
 Receipt Token BTCe balance: 0.00014578
+LBTCv (Vault) Token LBTCv balance: 0.0001378
+Complete ✅
 ```
 
 The output logs shows the balance of both the token that was deposited and receipt token received and burned after a successful deposit and withdrawal transaction in the Lombard Defi Vault.

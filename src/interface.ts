@@ -6,7 +6,8 @@ export interface EVMContract {
     teller: EVMData,
     baseToken: TokenData,
     depositToken: TokenData,
-    accountant: EVMData
+    accountant: EVMData,
+    withdrawalQueue: EVMData
 }
 
 export interface EVMData {
