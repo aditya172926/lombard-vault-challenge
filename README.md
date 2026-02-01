@@ -40,6 +40,7 @@ cp .sample.env .env
 - `TOKEN_ADDRESS`: (required if using Docker to run) Token address used to make the deposit. [Lombard Defi Vault supports](https://docs.lombard.finance/use/use-bitcoin-vaults#deposit-to-a-vault) tokens like WBTC, LBTC for making deposits and withdrawals on Ethereum mainnet.
 - `TOKEN_AMOUNT`:(required if using Docker to run) Amount of tokens you want to deposit and withdraw. This value should account for token decimals. So if depositing WBTC (decimals 8), 100000000 means 1 WBTC token.
 - `LOMBARD_BTCE_CONTRACT_ADDRESS`: Address of BTCe contract for the RPC_URL network. This is the entry point for making deposits and withdrawals in Lombard's Defi Vault and user receives BTCe tokens after deposits. If running on Ethereum Mainnet its address is 0x3a4baaBf4DC9910596821615e848f0e6545762F3.
+- `LOMBARD_WITHDRAWAL_QUEUE_ADDRESS`: Address on which the script submits the final withdrawal request to get LBTC for its shares of LBTCv. The withdrawal period can take up to 14 days. 0x3b4aCd8879fb60586cCd74bC2F831A4C5E7DbBf8.
 - `LBTC_TOKEN_ADDRESS`: Address of LBTC Token contract. Upon completion of Withdrawal time this token will be received by the user. 0x8236a87084f8B84306f72007F36F2618A5634494
 
 ## Running
@@ -140,6 +141,7 @@ The output logs shows the balance of both the token that was deposited and recei
 - `Accountant Contract`: [0x28634D0c5edC67CF2450E74deA49B90a4FF93dCE](https://etherscan.io/address/0x28634D0c5edC67CF2450E74deA49B90a4FF93dCE)
 - `WBTC Token`: [0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599](https://etherscan.io/address/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599)
 - `LBTC Token`: [0x8236a87084f8B84306f72007F36F2618A5634494](https://etherscan.io/address/0x8236a87084f8B84306f72007F36F2618A5634494)
+- `Lombard Withdrawal Queue Address`: [0x3b4aCd8879fb60586cCd74bC2F831A4C5E7DbBf8](https://etherscan.io/address/0x3b4aCd8879fb60586cCd74bC2F831A4C5E7DbBf8)
 
 # Flow Diagrams
 You can find the flow diagram of transactions for [Deposits and Withdrawals here](https://www.tldraw.com/f/f3xuoonFhXwSVwCO9jx-6?d=v-59.-857.5207.2305.page)
