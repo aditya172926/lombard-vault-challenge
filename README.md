@@ -1,3 +1,22 @@
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+**Table of Contents**
+
+- [Lombard Vault Challenge](#lombard-vault-challenge)
+  - [Setup](#setup)
+    - [Environment Variables](#environment-variables)
+  - [Running](#running)
+    - [Using Docker](#using-docker)
+      - [Using Docker in Fork Mode](#using-docker-in-fork-mode)
+      - [Using Docker in Mainnet mode](#using-docker-in-mainnet-mode)
+    - [Directly using npm](#directly-using-npm)
+  - [Output](#output)
+- [Smart Contracts](#smart-contracts)
+  - [Addresses on Ethereum Mainnet](#addresses-on-ethereum-mainnet)
+- [Design Decisions](#design-decisions)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
 # Lombard Vault Challenge
 
 A Typescript script that interacts with Lombard Defi Vault on Ethereum Mainnet to Deposit Tokens,reading user balance, withdraw tokens and show vault metadata.
