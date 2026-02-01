@@ -9,10 +9,10 @@
     "fork": "docker compose --profile fork up --build --abort-on-container-exit --exit-code-from app-fork",
     "mainnet": "docker compose --profile mainnet up --build"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": ["Defi", "Typescript", "Docker", "Blockchain"],
+  "author": "aditya26sg@gmail.com",
   "license": "ISC",
-  "description": "",
+  "description": "A script to make Deposits and Withdrawals from Lombard Defi Vault",
   "dependencies": {
     "dotenv": "^17.2.3",
     "ethers": "^6.16.0"
