@@ -13,8 +13,10 @@
   - [Output](#output)
 - [Smart Contracts](#smart-contracts)
   - [Addresses on Ethereum Mainnet](#addresses-on-ethereum-mainnet)
+- [Flow Diagrams](#flow-diagrams)
 - [Design Decisions](#design-decisions)
 - [Executed Transactions](#executed-transactions)
+- [Demo Videos](#demo-videos)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -139,6 +141,9 @@ The output logs shows the balance of both the token that was deposited and recei
 - `WBTC Token`: [0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599](https://etherscan.io/address/0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599)
 - `LBTC Token`: [0x8236a87084f8B84306f72007F36F2618A5634494](https://etherscan.io/address/0x8236a87084f8B84306f72007F36F2618A5634494)
 
+# Flow Diagrams
+You can find the flow diagram of transactions for [Deposits and Withdrawals here](https://www.tldraw.com/f/f3xuoonFhXwSVwCO9jx-6?d=v-59.-857.5207.2305.page)
+
 # Design Decisions
 
 - Why using BTCe instead of LBTCv?
@@ -174,3 +179,5 @@ The mainnet profile spins up the required environment quickly to do the transact
 - Withdrawal:
 1. [Withdraw Transaction (burning BTCe and receiving LBTCv)](https://etherscan.io/tx/0x199798cbaf2468f1f176e4efb65db769cc8248fae82bb7646394fe2b3c56dcc5)
 2. [Withrawal Queue Transaction](https://etherscan.io/tx/0x28bf56bca33dbd58f59814a7403c111794d450cc51e44d1e5eec0c4fd32eb980)
+
+# Demo Videos
