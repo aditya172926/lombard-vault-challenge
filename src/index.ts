@@ -26,6 +26,7 @@ function setup_wallet(): Wallet {
     return wallet;
 }
 
+// readonly methods calls (view or pure functions) on smart contracts
 async function callContractMethod<T>(
     contract: Contract,
     methodName: string,
@@ -36,6 +37,7 @@ async function callContractMethod<T>(
     return await fn(...args);
 }
 
+// write function calls on smart contracts
 async function sendContractMethod(
     contract: Contract,
     methodName: string,
@@ -189,6 +191,8 @@ async function getVaultDetails(contracts: EVMContract, wallet: Wallet): Promise<
         const apiLogs = await fetchLogs(chainId, contracts.accountant.address, exchangeRateEventTopic, pastBlockNumber, currentBlockNumber);
         if (apiLogs && apiLogs.length > 0) {
             log = apiLogs[0];
+        } else {
+            throw new Error("Failed to fetch logs with etherscan to calculate APY");
         }
     }
 
@@ -257,9 +261,12 @@ async function withdrawTokens(contracts: EVMContract, amount: bigint, receiver: 
         const lbtcTokenAddress = process.env.LBTC_TOKEN_ADDRESS;
         if (!lbtcTokenAddress) throw new Error("LBTC_TOKEN_ADDRESS not found in the environment");
 
+        // approve LBTCv tokens for withdrawal queue contract
         await approveTokens(contracts.lombardVault.contract, contracts.withdrawalQueue.address, amount, nonce + 1)
 
         const deadline = Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60;
+
+        // send withdraw request to withdrawal queue contract
         const withdrawalQTxnReceipt = await sendContractMethod(
             contracts.withdrawalQueue.contract, 
             "safeUpdateAtomicRequest", 
@@ -284,6 +291,8 @@ async function withdrawTokens(contracts: EVMContract, amount: bigint, receiver: 
 
 async function main(tokenToDeposit: string, amount: number) {
     try {
+        if (amount == 0) throw new Error("Amount should be more than 0");
+        
         const wallet: Wallet = setup_wallet();
         const userAddress: string = await wallet.getAddress();
         const contracts: EVMContract = await initialize_contracts(wallet, tokenToDeposit);

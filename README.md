@@ -34,10 +34,10 @@ cp .sample.env .env
 ```
 
 ### Environment Variables
-- `RPC_URL`: Rpc url for Ethereum mainnet network. You can get one from Infura for better performance.
+- `RPC_URL`: Rpc url for Ethereum mainnet network. You can get one from [Infura](https://www.infura.io/) for better performance and limits.
 - `PRIVATE_KEY`: User Private key to be used in the script for making deposits and withdrawals in the vault. Make sure this account has some token balance for deposits and native ETH to pay for gas.
-- `ETHERSCAN_API_KEY`: Etherscan api key used to get past block data and logs for APY calculation. You can generate one from Etherscan.
-- `TOKEN_ADDRESS`: (required if using Docker to run) Token address used to make the deposit. Lombard Defi Vault supports some tokens like WBTC, LBTC for making deposits and withdrawals on Ethereum mainnet.
+- `ETHERSCAN_API_KEY`: Etherscan api key used to get past block data and logs for APY calculation. You can generate one from [Etherscan API key generation docs](https://docs.etherscan.io/getting-an-api-key).
+- `TOKEN_ADDRESS`: (required if using Docker to run) Token address used to make the deposit. [Lombard Defi Vault supports](https://docs.lombard.finance/use/use-bitcoin-vaults#deposit-to-a-vault) tokens like WBTC, LBTC for making deposits and withdrawals on Ethereum mainnet.
 - `TOKEN_AMOUNT`:(required if using Docker to run) Amount of tokens you want to deposit and withdraw. This value should account for token decimals. So if depositing WBTC (decimals 8), 100000000 means 1 WBTC token.
 - `LOMBARD_BTCE_CONTRACT_ADDRESS`: Address of BTCe contract for the RPC_URL network. This is the entry point for making deposits and withdrawals in Lombard's Defi Vault and user receives BTCe tokens after deposits. If running on Ethereum Mainnet its address is 0x3a4baaBf4DC9910596821615e848f0e6545762F3.
 - `LBTC_TOKEN_ADDRESS`: Address of LBTC Token contract. Upon completion of Withdrawal time this token will be received by the user. 0x8236a87084f8B84306f72007F36F2618A5634494
@@ -79,7 +79,7 @@ docker compose --profile mainnet up --build
 
 This will run the script directly on Ethereum Mainnet executing real transactions.
 
-### Directly using npm
+### Using npm
 
 You can run the script using this command and by specifying which token to use for deposit and how much.
 This will run the script directly on Ethereum Mainnet, or whichever RPC_URL have you set in the environment variables.
@@ -150,7 +150,7 @@ You can find the flow diagram of transactions for [Deposits and Withdrawals here
 
 BTCe is Lombard's official wrapper around the LBTCv token vault contract. Lombard's dashboard makes the deposits and withdrawals transactions using BTCe contract. On withdrawal BTCe burns immediately and its balance for the user reduces.
 
-On the Veda app platform, the dashboard uses a teller contract which calls the Lombard's Vault contract on Ethereum Mainnet. But the withdrawal transaction still happens using the BTCe contract.
+On the [Veda app platform](https://app.veda.tech/vaults/Lombard-DeFi-Vault), the dashboard uses a teller contract which calls the Lombard's Vault contract on Ethereum Mainnet. But the withdrawal transaction still happens using the BTCe contract.
 
 The script just executes the deposit and withdrawal using the BTCe contract and user receives the BTCe tokens as a receipt token for their deposit.
 
