@@ -5,7 +5,6 @@ import ERC20Abi from "./abis/ERC20.json";
 import LBTCvAbi from "./abis/LBTCv.json";
 import LAccountantAbi from "./abis/Lombard_Accountant.json";
 import TellerAbi from "./abis/Teller.json";
-import { LOMBARD_BTCE_CONTRACT_ADDRESS } from "./constants";
 import { EVMContract, LogResult, VaultDetails } from "./interface";
 import { fetchLogs, getBtcPrice, getPastBlockNumber } from "./service";
 
@@ -52,7 +51,10 @@ async function sendContractMethod(
 }
 
 async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Promise<EVMContract> {
-    const btceContract = new Contract(LOMBARD_BTCE_CONTRACT_ADDRESS, BTCeAbi, wallet);
+    const lombard_btce_contract_address = process.env.LOMBARD_BTCE_CONTRACT_ADDRESS;
+    if (!lombard_btce_contract_address) throw new Error("LOMBARD_BTCE_CONTRACT_ADDRESS not found in environment");
+
+    const btceContract = new Contract(lombard_btce_contract_address, BTCeAbi, wallet);
 
     const tellerAddress = await callContractMethod<string>(btceContract, "teller");
     const tellerContract = new Contract(tellerAddress, TellerAbi, wallet);
@@ -96,7 +98,7 @@ async function initialize_contracts(wallet: Wallet, tokenToDeposit: string): Pro
 
     return {
         btce: {
-            address: LOMBARD_BTCE_CONTRACT_ADDRESS,
+            address: lombard_btce_contract_address,
             contract: btceContract,
             decimals: Number(btceData[0]),
             symbol: btceData[1],
