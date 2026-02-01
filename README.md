@@ -14,6 +14,7 @@
 - [Smart Contracts](#smart-contracts)
   - [Addresses on Ethereum Mainnet](#addresses-on-ethereum-mainnet)
 - [Design Decisions](#design-decisions)
+- [Executed Transactions](#executed-transactions)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -166,3 +167,10 @@ If fetching past logs fails due to RPC limits, it falls back on using Etherscan 
 The Fork mode is good for testing and seeing how the script would run on the real network without actually spending real money. Further more we can do more configurations in the fork mode like adding more gas, try different tokens, impersonate accounts, etc.
 
 The mainnet profile spins up the required environment quickly to do the transactions on the actual Ethereum Mainnet network.
+
+# Executed Transactions
+
+- Deposit: [Deposit Transaction (user receiving BTCe tokens)](https://etherscan.io/tx/0xab4a47bfc6652196a8a434babce304413e7363b91754b3ab6156e4a0106cad97)
+- Withdrawal:
+1. [Withdraw Transaction (burning BTCe and receiving LBTCv)](https://etherscan.io/tx/0x199798cbaf2468f1f176e4efb65db769cc8248fae82bb7646394fe2b3c56dcc5)
+2. [Withrawal Queue Transaction](https://etherscan.io/tx/0x28bf56bca33dbd58f59814a7403c111794d450cc51e44d1e5eec0c4fd32eb980)
