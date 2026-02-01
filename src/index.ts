@@ -238,8 +238,8 @@ async function checkMultipleBalances(contracts: EVMContract, userAddress: string
     console.log(`LBTCv (Vault) Token ${contracts.lombardVault.symbol} balance: ${formattedLBTCvBalance}`)
 }
 
-async function approveTokens(contract: Contract, spender: string, amount: number) {
-    const approveTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contract, "approve", spender, amount);
+async function approveTokens(contract: Contract, spender: string, amount: bigint, nonce: number) {
+    const approveTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contract, "approve", spender, amount, {nonce});
     if (approveTxnReceipt.status !== TransactionStatus.SUCCESS) {
         throw new Error("Token Approval Failed");
     }
@@ -250,12 +250,14 @@ async function depositTokens(contract: Contract, tokenAddress: string, amount: b
     return depositTxnReceipt.status == TransactionStatus.SUCCESS;
 }
 
-async function withdrawTokens(contracts: EVMContract, amount: bigint, receiver: string, owner: string): Promise<boolean> {
-    const withdrawTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contracts.btce.contract, "withdraw", amount, receiver, owner);
+async function withdrawTokens(contracts: EVMContract, amount: bigint, receiver: string, owner: string, nonce: number): Promise<boolean> {
+    const withdrawTxnReceipt: ContractTransactionReceipt = await sendContractMethod(contracts.btce.contract, "withdraw", amount, receiver, owner, { nonce });
     if (withdrawTxnReceipt.status == TransactionStatus.SUCCESS) {
         // submit to queue
         const lbtcTokenAddress = process.env.LBTC_TOKEN_ADDRESS;
         if (!lbtcTokenAddress) throw new Error("LBTC_TOKEN_ADDRESS not found in the environment");
+
+        await approveTokens(contracts.lombardVault.contract, contracts.withdrawalQueue.address, amount, nonce + 1)
 
         const deadline = Math.floor(Date.now() / 1000) + 14 * 24 * 60 * 60;
         const withdrawalQTxnReceipt = await sendContractMethod(
@@ -270,8 +272,9 @@ async function withdrawTokens(contracts: EVMContract, amount: bigint, receiver: 
                 false // inSolve
             ],
             contracts.accountant.address,
-            100 // discount
-        )
+            100, // discount
+            {nonce: nonce + 2}
+        );
 
         return withdrawalQTxnReceipt.status == TransactionStatus.SUCCESS;
     } else {
@@ -297,23 +300,40 @@ async function main(tokenToDeposit: string, amount: number) {
         await checkMultipleBalances(contracts, userAddress);
 
         // token approval
-        await approveTokens(contracts.depositToken.contract, contracts.btce.address, amount);
+        let nonce = await wallet.getNonce();
+        await approveTokens(contracts.depositToken.contract, contracts.btce.address, BigInt(amount), nonce);
 
         // get latest nonce
-        const nonce = await wallet.getNonce();
+        nonce = await wallet.getNonce();
 
         // deposit function call
         console.log("\nDepositing...");
-        const depositSuccess = await depositTokens(contracts.btce.contract, contracts.depositToken.address, BigInt(amount), userAddress, BigInt(0), nonce);
+        const depositSuccess = await depositTokens(
+            contracts.btce.contract, 
+            contracts.depositToken.address, 
+            BigInt(amount), 
+            userAddress, 
+            BigInt(0), 
+            nonce
+        );
+
         if (depositSuccess) {
             await checkMultipleBalances(contracts, userAddress);
         } else {
             throw new Error(`Deposit Transaction failed`);
         }
 
+        nonce = await wallet.getNonce();
+
         // withdraw flow
         console.log("\nWithdrawing...");
-        const withdrawSuccess = await withdrawTokens(contracts, BigInt(amount), userAddress, userAddress);
+        const withdrawSuccess = await withdrawTokens(
+            contracts, 
+            BigInt(amount), 
+            userAddress, 
+            userAddress, 
+            nonce
+        );
         if (withdrawSuccess) {
             await checkMultipleBalances(contracts, userAddress);
         } else {
